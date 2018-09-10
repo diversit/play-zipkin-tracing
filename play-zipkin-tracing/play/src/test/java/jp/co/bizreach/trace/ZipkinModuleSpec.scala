@@ -5,6 +5,7 @@ import java.util.Collections
 import brave.Tracing
 import jp.co.bizreach.trace.ZipkinTraceServiceLike
 import jp.co.bizreach.trace.play.ZipkinTraceService
+import jp.co.bizreach.trace.play.sender.{NoopSender, PlayLoggerSender}
 import org.scalatest.AsyncFlatSpec
 import play.api.inject.ApplicationLifecycle
 import play.api.inject.guice.GuiceApplicationBuilder
@@ -20,6 +21,26 @@ class ZipkinModuleSpec extends AsyncFlatSpec {
   it should "provide an okhttp sender" in {
     val sender = injector.instanceOf[Sender]
     assert(sender.isInstanceOf[OkHttpSender])
+  }
+
+  it should "provide a noop sender" in {
+    val testInjector = new GuiceApplicationBuilder()
+      .configure("trace.zipkin.sender" -> "noop")
+      .bindings(new ZipkinModule)
+      .injector()
+
+    val sender = testInjector.instanceOf[Sender]
+    assert(sender.isInstanceOf[NoopSender])
+  }
+
+  it should "provide a play logger sender" in {
+    val testInjector = new GuiceApplicationBuilder()
+      .configure("trace.zipkin.sender" -> "log")
+      .bindings(new ZipkinModule)
+      .injector()
+
+    val sender = testInjector.instanceOf[Sender]
+    assert(sender.isInstanceOf[PlayLoggerSender])
   }
 
   it should "eventually close the sender" in {

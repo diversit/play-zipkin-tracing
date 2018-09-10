@@ -43,6 +43,7 @@ lazy val commonSettings = Seq(
 
 val playVersion = "2.6.15"
 val akkaVersion = "2.5.11"
+val braveVersion = "5.2.0"
 
 lazy val root = (project in file(".")).
   settings(commonSettings: _*).
@@ -58,12 +59,14 @@ lazy val core = (project in file("core")).
     name := "play-zipkin-tracing-core",
     libraryDependencies ++= Seq(
       "commons-lang" % "commons-lang" % "2.6",
-      "io.zipkin.brave" % "brave" % "4.12.0",
-      "io.zipkin.reporter2" % "zipkin-sender-okhttp3" % "2.2.0",
+      "io.zipkin.brave" % "brave" % braveVersion,
+      "io.zipkin.brave" % "brave-context-slf4j" % braveVersion,
+      "io.zipkin.reporter2" % "zipkin-sender-okhttp3" % "2.7.7",
       "org.scalatest" %% "scalatest" % "3.0.3" % "test",
-      "io.zipkin.brave" % "brave-tests" % "4.12.0" % "test",
+      "io.zipkin.brave" % "brave-tests" % braveVersion % "test",
       "junit" % "junit" % "4.12" % "test",
-      "com.novocode" % "junit-interface" % "0.11" % "test"
+      "com.novocode" % "junit-interface" % "0.11" % "test",
+      "ch.qos.logback" % "logback-classic" % "1.2.3" % "test"
     ),
     testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v")
   )

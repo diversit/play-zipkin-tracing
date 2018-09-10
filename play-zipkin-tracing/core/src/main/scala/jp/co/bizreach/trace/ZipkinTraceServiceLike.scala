@@ -42,6 +42,41 @@ trait ZipkinTraceServiceLike {
 
   private def tracer: Tracer = tracing.tracer
 
+  /**
+    * Put span in scope so span can be use by a ScopeDecorator like the MDCScopeDecorator
+    * to make the trace id available for logging.
+    * Scope *must* be closed otherwise it will leak.
+    *
+    * @param span Current span
+    * @return DSL for using scoped span in a function or Future.
+    */
+  def scope(span: Span) = new {
+    /**
+      * Using the scoped span in a function.
+      * Always closes the scoped span after function completes.
+      */
+    def in[T](f: Span => T): T = {
+      val inScope = tracer.withSpanInScope(span)
+      try {
+        f(span)
+      } finally {
+        inScope.close()
+      }
+    }
+
+    /**
+      * Using the scoped span in a function.
+      * Closes the scoped span when Future completes.
+      */
+    def inFuture[T](f: Span => Future[T]): Future[T] = {
+      val inScope = tracer.withSpanInScope(span)
+      val result = f(span)
+      result.onComplete { _ =>
+        inScope.close()
+      }
+      result
+    }
+  }
 
   /**
    * Creates a new client span within an existing trace and reports the span complete.
@@ -59,7 +94,7 @@ trait ZipkinTraceServiceLike {
     tags.foreach { case (key, value) => childSpan.tag(key, value) }
     childSpan.start()
 
-    Try(f(TraceData(childSpan))) match {
+    Try(scope(childSpan).in(span => f(TraceData(span)))) match {
       case Failure(t) =>
         childSpan.tag("failed", s"Finished with exception: ${t.getMessage}")
         childSpan.finish()
@@ -86,7 +121,7 @@ trait ZipkinTraceServiceLike {
     tags.foreach { case (key, value) => childSpan.tag(key, value) }
     childSpan.start()
 
-    val result = f(TraceData(childSpan))
+    val result = scope(childSpan).inFuture(span => f(TraceData(span)))
 
     result.onComplete {
       case Failure(t) =>
@@ -139,7 +174,7 @@ trait ZipkinTraceServiceLike {
 
     Option(contextOrFlags.context())
       .map(tracer.newChild)
-      .getOrElse(tracer.newTrace(contextOrFlags.samplingFlags()))
+      .getOrElse(tracer.newTrace())
   }
 
   /**

@@ -2,6 +2,8 @@ package jp.co.bizreach.trace.akka.actor
 
 import akka.actor.ActorSystem
 import brave.Tracing
+import brave.context.slf4j.MDCScopeDecorator
+import brave.propagation.ThreadLocalCurrentTraceContext
 import brave.sampler.Sampler
 import jp.co.bizreach.trace.{ZipkinTraceConfig, ZipkinTraceServiceLike}
 import zipkin2.reporter.AsyncReporter
@@ -29,6 +31,10 @@ class ZipkinTraceService(
 
   val tracing = Tracing.newBuilder()
     .localServiceName(serviceName)
+    .currentTraceContext(ThreadLocalCurrentTraceContext.newBuilder()
+      .addScopeDecorator(MDCScopeDecorator.create())
+      .build()
+    )
     .spanReporter(AsyncReporter.create(sender))
     .sampler(sampleRate.map(x => Sampler.create(x)) getOrElse Sampler.ALWAYS_SAMPLE)
     .build()

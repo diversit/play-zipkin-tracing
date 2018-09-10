@@ -1,0 +1,21 @@
+<configuration>
+
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- encoders are assigned the type
+         ch.qos.logback.classic.encoder.PatternLayoutEncoder by default -->
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%X{traceId}/%X{spanId}] [%thread] %-5level %logger{36} - %msg MDC:%mdc%n</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="MEM" class="testutil.LogbackInMemoryAppender">
+    <encoder>
+      <pattern>[%X{traceId}/%X{spanId}] %-5level %logger{36} - %msg MDC:%mdc%n</pattern>
+    </encoder>
+  </appender>
+
+  <root level="debug">
+    <appender-ref ref="STDOUT" />
+    <appender-ref ref="MEM" />
+  </root>
+</configuration>

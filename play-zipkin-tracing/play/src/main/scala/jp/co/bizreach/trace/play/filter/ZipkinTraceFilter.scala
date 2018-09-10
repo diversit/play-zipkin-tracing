@@ -25,7 +25,6 @@ import scala.util.Failure
  * @param mat a materializer
  */
 class ZipkinTraceFilter @Inject() (tracer: ZipkinTraceServiceLike)(implicit val mat: Materializer) extends Filter {
-
   import tracer.executionContext
   private val reqHeaderToSpanName: RequestHeader => String = ZipkinTraceFilter.ParamAwareRequestNamer
 
@@ -34,14 +33,17 @@ class ZipkinTraceFilter @Inject() (tracer: ZipkinTraceServiceLike)(implicit val 
       spanName = reqHeaderToSpanName(req),
       span = tracer.newSpan(req.headers)((headers, key) => headers.get(key))
     )
-    val result = nextFilter(req.withHeaders(new Headers(
-      (req.headers.toMap.mapValues(_.headOption getOrElse "") ++ tracer.toMap(serverSpan)).toSeq
-    )))
-    result.onComplete {
-      case Failure(t) => tracer.serverSend(serverSpan, "failed" -> s"Finished with exception: ${t.getMessage}")
-      case _ => tracer.serverSend(serverSpan)
+
+    tracer.scope(serverSpan).inFuture { span =>
+      val result = nextFilter(req.withHeaders(new Headers(
+        (req.headers.toMap.mapValues(_.headOption getOrElse "") ++ tracer.toMap(serverSpan)).toSeq
+      )))
+      result.onComplete {
+        case Failure(t) => tracer.serverSend(span, "failed" -> s"Finished with exception: ${t.getMessage}")
+        case _ => tracer.serverSend(span)
+      }
+      result
     }
-    result
   }
 }
 

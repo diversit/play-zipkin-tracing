@@ -1,8 +1,12 @@
 package jp.co.bizreach.trace
 
 import brave.Tracing
+import brave.context.slf4j.MDCScopeDecorator
 import brave.internal.HexCodec
+import brave.propagation.ThreadLocalCurrentTraceContext
 import org.scalatest.FunSuite
+import org.slf4j.LoggerFactory
+import testutil.LogbackMemory
 import zipkin2.Span
 import zipkin2.reporter.Reporter
 
@@ -23,11 +27,17 @@ class ZipkinTraceServiceLikeSpec extends FunSuite {
     val tracer = new TestZipkinTraceService()
     implicit val traceData = initialTraceData(tracer, Map.empty)
 
+    val log = LoggerFactory.getLogger("Test nested")
+    log.info("Before trace")
+
     tracer.trace("trace-1"){ implicit traceData =>
+      log.info("Inside first trace")
       tracer.trace("trace-2"){ implicit traceData =>
-        println("Hello World!")
+        log.info("Inside nested trace")
       }
     }
+
+    log.info("Outside trace")
 
     assert(tracer.reporter.spans.length == 2)
 
@@ -37,10 +47,17 @@ class ZipkinTraceServiceLikeSpec extends FunSuite {
     assert(parent.id == child.parentId)
     assert(parent.id != child.id)
     assert(parent.duration > child.duration)
+
+    // verify trace id present in log output
+    assert(LogbackMemory.dequeue === "[/] INFO  Test nested - Before trace MDC:\n") // no trace id before starting trace
+    assert(LogbackMemory.dequeue === s"[${parent.traceId()}/${parent.id()}] INFO  Test nested - Inside first trace MDC:traceId=${parent.traceId()}, spanId=${parent.id()}, parentId=${parent.parentId()}\n")
+    assert(LogbackMemory.dequeue === s"[${child.traceId()}/${child.id()}] INFO  Test nested - Inside nested trace MDC:traceId=${child.traceId()}, spanId=${child.id()}, parentId=${child.parentId()}\n")
+    assert(LogbackMemory.dequeue === "[/] INFO  Test nested - Outside trace MDC:\n") // no trace id after finishing trace
   }
 
   test("Future and a nested local synchronous process tracing") {
     import scala.concurrent.ExecutionContext.Implicits.global
+    val log = LoggerFactory.getLogger("Test Future")
 
     val tracer = new TestZipkinTraceService()
     implicit val traceData = initialTraceData(tracer, Map.empty)
@@ -49,6 +66,7 @@ class ZipkinTraceServiceLikeSpec extends FunSuite {
       Future {
         tracer.trace("trace-sync") { _ =>
           Thread.sleep(500)
+          log.info("In trace-sync")
         }
       }
     }
@@ -64,6 +82,8 @@ class ZipkinTraceServiceLikeSpec extends FunSuite {
     assert(parent.id == child.parentId)
     assert(parent.id != child.id)
     assert(parent.duration > child.duration)
+
+    assert(LogbackMemory.dequeue === s"[${child.traceId()}/${child.id()}] INFO  Test Future - In trace-sync MDC:traceId=${child.traceId()}, spanId=${child.id()}, parentId=${child.parentId()}\n")
   }
 
   test("Create span") {
@@ -108,7 +128,13 @@ class ZipkinTraceServiceLikeSpec extends FunSuite {
 class TestZipkinTraceService extends ZipkinTraceServiceLike {
   override implicit val executionContext: ExecutionContext = ExecutionContext.global
   val reporter = new TestReporter()
-  override val tracing: Tracing = Tracing.newBuilder().spanReporter(reporter).build()
+  override val tracing: Tracing = Tracing.newBuilder()
+    .currentTraceContext(ThreadLocalCurrentTraceContext.newBuilder()
+      .addScopeDecorator(MDCScopeDecorator.create())
+      .build()
+    )
+    .spanReporter(reporter)
+    .build()
 }
 
 class TestReporter extends Reporter[Span] {
